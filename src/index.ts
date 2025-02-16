@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { QdrantInstance, OpenAiInstance } from "ai-service-hub";
 import dotenv from "dotenv";
 import sqlite3 from "sqlite3";
@@ -177,6 +178,7 @@ async function processServiceDataOnlyAi(serviceDescription: string): Promise<{ a
 }
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 // Endpoint to process the backend task
