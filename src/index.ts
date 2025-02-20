@@ -124,7 +124,7 @@ async function getCachedAiSuggestion(serviceDescription: string, pkdCodeData: an
             [serviceDescription, aiOutput]
         );
 
-        return aiOutput;
+        return JSON.parse(aiOutput);
     } catch (error) {
         console.error("Error in getCachedAiSuggestion:", error);
         throw error;
