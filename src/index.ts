@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { QdrantInstance, OpenAiInstance } from "ai-service-hub";
 import dotenv from "dotenv";
-import sqlite3 from "sqlite3";
+import { Pool } from "pg";
 
 dotenv.config();
 
@@ -11,9 +11,15 @@ const qdrantUrl = process.env.QDRANT_URL;
 const qdrantApiKey = process.env.QDRANT_API_KEY;
 const openaiApiKey = process.env.OPENAI_API_KEY;
 const port = process.env.PORT || 3000;
+const databaseUrl = process.env.DATABASE_URL;
 
 if (!qdrantUrl || !qdrantApiKey || !openaiApiKey) {
     console.error("Missing required environment variables: QDRANT_URL, QDRANT_API_KEY, or OPENAI_API_KEY");
+    process.exit(1);
+}
+
+if (!databaseUrl) {
+    console.error("Missing required environment variable: DATABASE_URL for PostgreSQL");
     process.exit(1);
 }
 
@@ -24,115 +30,105 @@ const qdrant = new QdrantInstance({
 });
 const openai = new OpenAiInstance(openaiApiKey);
 
-// Initialize SQLite database for caching
-const db = new sqlite3.Database("./cache.db", (err) => {
-    if (err) {
-        console.error("Error opening database: " + err.message);
-    } else {
-        // Table for Qdrant query cache
-        db.run(
-            "CREATE TABLE IF NOT EXISTS cache(serviceDescription TEXT PRIMARY KEY, pkdCodeData TEXT)",
-            (err) => {
-                if (err) console.error("Error creating cache table: " + err.message);
-            }
-        );
-        // Table for AI suggestion cache
-        db.run(
-            "CREATE TABLE IF NOT EXISTS aiCache(serviceDescription TEXT PRIMARY KEY, aiSuggestion TEXT)",
-            (err) => {
-                if (err) console.error("Error creating aiCache table: " + err.message);
-            }
-        );
-    }
+// Initialize Postgres pool
+const pool = new Pool({
+    connectionString: databaseUrl,
 });
 
-// --------------------
-// Save cache in database using SQLite for Qdrant queries
+// Create tables if they don't exist
+pool.query(`
+    CREATE TABLE IF NOT EXISTS cache (
+        serviceDescription TEXT PRIMARY KEY,
+        pkdCodeData TEXT
+    )
+`).catch((err) => console.error("Error creating 'cache' table:", err));
+
+pool.query(`
+    CREATE TABLE IF NOT EXISTS aiCache (
+        serviceDescription TEXT PRIMARY KEY,
+        aiSuggestion TEXT
+    )
+`).catch((err) => console.error("Error creating 'aiCache' table:", err));
+
+/**
+ * Fetch Qdrant data from the 'cache' table, otherwise query OpenAI + Qdrant
+ * and store the results in Postgres.
+ */
 async function getCachedQdrantData(serviceDescription: string): Promise<any[]> {
-    return new Promise<any[]>((resolve, reject) => {
-        db.get(
-            "SELECT pkdCodeData FROM cache WHERE serviceDescription = ?",
-            [serviceDescription],
-            async (err, row) => {
-                if (err) {
-                    console.error("Database error:", err);
-                    return reject(err);
-                }
-                if (row) {
-                    try {
-                        const { pkdCodeData } = row as { pkdCodeData: string };
-                        const cachedData = JSON.parse(pkdCodeData);
-                        return resolve(cachedData);
-                    } catch (parseError) {
-                        console.error("Error parsing cache data:", parseError);
-                        // Proceed to fetch new data if parsing fails
-                    }
-                }
-                try {
-                    const embedding = await openai.embedding(serviceDescription);
-                    const pkdCodeData = await qdrant.queryQdrant(embedding, "pkdCode", 5);
-                    const pkdCodeDataJson = JSON.stringify(pkdCodeData);
-                    db.run(
-                        "INSERT OR REPLACE INTO cache (serviceDescription, pkdCodeData) VALUES (?, ?)",
-                        [serviceDescription, pkdCodeDataJson],
-                        (insertErr) => {
-                            if (insertErr) {
-                                console.error("Error inserting cache data:", insertErr);
-                            }
-                            return resolve(pkdCodeData);
-                        }
-                    );
-                } catch (error) {
-                    console.error("Error fetching data:", error);
-                    return reject(error);
-                }
-            }
+    try {
+        const selectResult = await pool.query(
+            "SELECT pkdCodeData FROM cache WHERE serviceDescription = $1",
+            [serviceDescription]
         );
-    });
+
+        // If data found in cache, parse and return it
+        if (selectResult?.rowCount && selectResult.rowCount > 0) {
+            const row = selectResult.rows[0];
+            return JSON.parse(row.pkdcodedata);
+        }
+
+        // Otherwise, go fetch new data
+        const embedding = await openai.embedding(serviceDescription);
+        const pkdCodeData = await qdrant.queryQdrant(embedding, "pkdCode", 5);
+        const pkdCodeDataJson = JSON.stringify(pkdCodeData);
+
+        // Insert or update the result in 'cache' table
+        await pool.query(
+            `INSERT INTO cache (serviceDescription, pkdCodeData)
+             VALUES ($1, $2)
+             ON CONFLICT (serviceDescription)
+             DO UPDATE SET pkdCodeData = EXCLUDED.pkdCodeData`,
+            [serviceDescription, pkdCodeDataJson]
+        );
+
+        return pkdCodeData;
+    } catch (error) {
+        console.error("Error in getCachedQdrantData:", error);
+        throw error;
+    }
 }
 
-// Helper function to get cached AI suggestion
+/**
+ * Fetch AI suggestion from the 'aiCache' table, otherwise generate new suggestion
+ * and store it in Postgres.
+ */
 async function getCachedAiSuggestion(serviceDescription: string, pkdCodeData: any[]): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-        db.get(
-            "SELECT aiSuggestion FROM aiCache WHERE serviceDescription = ?",
-            [serviceDescription],
-            async (err, row) => {
-                if (err) {
-                    console.error("Database error:", err);
-                    return reject(err);
-                }
-                if (row) {
-                    try {
-                        const { aiSuggestion } = row as { aiSuggestion: string };
-                        return resolve(aiSuggestion);
-                    } catch (parseError) {
-                        console.error("Error parsing AI suggestion cache data:", parseError);
-                    }
-                }
-                try {
-                    const pkdCodeString = pkdCodeData.map(item => JSON.stringify(item)).join(", ");
-                    const prompt = `Wybierz z listy najbardziej pasujący do danych podanych przez użytkownika item ${pkdCodeString} a resztę zwróc jako json`;
-                    const response = await openai.chat(serviceDescription, prompt, "gpt-4o", {
-                        type: "json_object",
-                    });
-                    db.run(
-                        "INSERT OR REPLACE INTO aiCache (serviceDescription, aiSuggestion) VALUES (?, ?)",
-                        [serviceDescription, response || ""],
-                        (insertErr) => {
-                            if (insertErr) {
-                                console.error("Error inserting AI suggestion cache:", insertErr);
-                            }
-                            return resolve(response || "");
-                        }
-                    );
-                } catch (error) {
-                    console.error("Error fetching AI suggestion:", error);
-                    return reject(error);
-                }
-            }
+    try {
+        const selectResult = await pool.query(
+            "SELECT aiSuggestion FROM aiCache WHERE serviceDescription = $1",
+            [serviceDescription]
         );
-    });
+
+        // If data found in cache, return it
+        if (selectResult?.rowCount && selectResult.rowCount > 0) {
+            const row = selectResult.rows[0];
+            console.log("cached data", row.aisuggestion);
+            return JSON.parse(row.aisuggestion);
+        }
+
+        // Otherwise, generate a new AI suggestion
+        const pkdCodeString = pkdCodeData.map(item => JSON.stringify(item)).join(", ");
+        const prompt = `Wybierz z listy najbardziej pasujący do danych podanych przez użytkownika item ${pkdCodeString} a resztę zwróc jako json`;
+
+        const response = await openai.chat(serviceDescription, prompt, "gpt-4o", {
+            type: "json_object",
+        });
+        const aiOutput = response || "";
+
+        // Insert or update the result in 'aiCache' table
+        await pool.query(
+            `INSERT INTO aiCache (serviceDescription, aiSuggestion)
+             VALUES ($1, $2)
+             ON CONFLICT (serviceDescription)
+             DO UPDATE SET aiSuggestion = EXCLUDED.aiSuggestion`,
+            [serviceDescription, aiOutput]
+        );
+
+        return aiOutput;
+    } catch (error) {
+        console.error("Error in getCachedAiSuggestion:", error);
+        throw error;
+    }
 }
 
 /**
@@ -190,10 +186,10 @@ app.get("/process/", async (req, res) => {
             res.status(200).json({ data: { pkdCodeData } });
         } else if (onlyAi) {
             const { aiSuggestion } = await processServiceDataOnlyAi(serviceDescription as string);
-            res.status(200).json({ data: { aiSuggestion: JSON.parse(aiSuggestion) } });
+            res.status(200).json({ data: { aiSuggestion } });
         } else {
             const { aiSuggestion, pkdCodeData } = await processServiceData(serviceDescription as string);
-            res.status(200).json({ data: { aiSuggestion: JSON.parse(aiSuggestion), pkdCodeData: pkdCodeData } });
+            res.status(200).json({ data: { aiSuggestion, pkdCodeData } });
         }
     } catch (error) {
         res.status(500).json({ error: "An error occurred during backend processing" });
