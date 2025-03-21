@@ -108,7 +108,7 @@ async function getCachedAiSuggestion(serviceDescription: string, pkdCodeData: an
 
         // Otherwise, generate a new AI suggestion
         const pkdCodeString = pkdCodeData.map(item => JSON.stringify(item)).join(", ");
-        const prompt = `Wybierz z listy najbardziej pasujący do danych podanych przez użytkownika item ${pkdCodeString} a resztę zwróc jako json`;
+        const prompt = `Wybierz z listy najbardziej pasujący do danych podanych przez użytkownika element ${pkdCodeString} a pozostałe dane zwróć jako obiekt json`;
 
         const response = await openai.chat(serviceDescription, prompt, "gpt-4o", {
             type: "json_object",
