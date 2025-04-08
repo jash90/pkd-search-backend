@@ -43,4 +43,24 @@ export async function getCachedQdrantData(serviceDescription: string, embedding:
     console.error("Error in getCachedQdrantData:", error);
     throw error;
   }
+}
+
+/**
+ * Get sample elements from Qdrant database
+ * @param limit Number of elements to retrieve
+ * @returns Array of sample PKD codes
+ */
+export async function getSampleQdrantData(limit: number = 10): Promise<any[]> {
+  try {
+    // Create a default vector with correct dimensions (3072 instead of 1536)
+    const defaultVector = Array(3072).fill(0.1);
+    
+    // Query Qdrant with the correct dimension vector
+    const sampleData = await qdrantClient.queryQdrant(defaultVector, "pkdCode", limit);
+    
+    return sampleData;
+  } catch (error) {
+    console.error("Error getting sample data from Qdrant:", error);
+    throw error;
+  }
 } 
