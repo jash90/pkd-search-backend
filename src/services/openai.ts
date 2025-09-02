@@ -34,7 +34,7 @@ export async function getCachedAiSuggestion(serviceDescription: string, pkdCodeD
     const pkdCodeString = pkdCodeData.map(item => JSON.stringify(item)).join(", ");
     const prompt = `Wybierz z listy najbardziej pasujący do danych podanych przez użytkownika element ${pkdCodeString} a pozostałe dane zwróć jako obiekt json`;
 
-    const response = await openaiClient.chat(serviceDescription, prompt, "gpt-5", {
+    const response = await openaiClient.chat(serviceDescription, prompt, "gpt-4o", {
       type: "json_object",
     });
     const aiOutput = response || "";
