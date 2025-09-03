@@ -32,11 +32,37 @@ export async function getCachedAiSuggestion(serviceDescription: string, pkdCodeD
 
     // Otherwise, generate a new AI suggestion
     const pkdCodeString = pkdCodeData.map(item => JSON.stringify(item)).join(", ");
-    const prompt = `Wybierz z listy najbardziej pasujący do danych podanych przez użytkownika element ${pkdCodeString} a pozostałe dane zwróć jako obiekt json`;
+    const prompt = `
+    Na podstawie danych podanych przez użytkownika wybierz z listy najbardziej pasujący element ${pkdCodeString}.  
+Wynik zwróć wyłącznie w formacie JSON zgodnym ze schematem:  
+{
+  "id": string,            // identyfikator elementu z listy
+  "version": number,       // wersja rekordu
+  "score": number,         // stopień dopasowania (0–1)
+  "payload": {
+    "grupaKlasaPodklasa": string,   // kod PKD
+    "nazwaGrupowania": string,      // nazwa grupowania
+    "opisDodatkowy": string         // szczegółowy opis
+  }
+}  
+
+Przykładowa odpowiedź:  
+{
+  "id": "5f5d9030-ff0a-4a2c-b2e9-e31ef5e1abed",
+  "version": 739,
+  "score": 0.5785652,
+  "payload": {
+    "grupaKlasaPodklasa": "43.91.Z",
+    "nazwaGrupowania": "Roboty murarskie",
+    "opisDodatkowy": "Podklasa ta obejmuje: murowanie, układanie kostki, osadzanie kamienia i inne roboty murarskie."
+  }
+}
+`;
 
     const response = await openaiClient.chat(serviceDescription, prompt, "gpt-4o", {
       type: "json_object",
     });
+
     const aiOutput = response || "";
 
     // Insert or update the result in 'aiCache' table
