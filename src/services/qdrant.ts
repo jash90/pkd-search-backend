@@ -1,9 +1,9 @@
-import { QdrantInstance } from "ai-service-hub";
+import { QdrantClient } from "@qdrant/js-client-rest";
 import { env } from "../config/env";
 import { pool } from "../db/database";
 
-// Initialize Qdrant instance
-export const qdrantClient = new QdrantInstance({
+// Initialize Qdrant client
+export const qdrantClient = new QdrantClient({
   url: env.qdrant.url,
   apiKey: env.qdrant.apiKey,
 });
@@ -26,7 +26,12 @@ export async function getCachedQdrantData(serviceDescription: string, embedding:
     }
 
     // Otherwise, go fetch new data
-    const pkdCodeData = await qdrantClient.queryQdrant(embedding, "pkdCode", 5);
+    const pkdCodeData = await qdrantClient.query("pkdCode", {
+      query: embedding,
+      limit: 5,
+      with_payload: true,
+    });
+
     const pkdCodeDataJson = JSON.stringify(pkdCodeData);
 
     // Insert or update the result in 'cache' table
@@ -54,13 +59,17 @@ export async function getSampleQdrantData(limit: number = 10): Promise<any[]> {
   try {
     // Create a default vector with correct dimensions (3072 instead of 1536)
     const defaultVector = Array(3072).fill(0.1);
-    
+
     // Query Qdrant with the correct dimension vector
-    const sampleData = await qdrantClient.queryQdrant(defaultVector, "pkdCode", limit);
-    
+    const sampleData = await qdrantClient.query("pkdCode", {
+      query: defaultVector,
+      limit,
+      with_payload: true,
+    });
+
     return sampleData;
   } catch (error) {
     console.error("Error getting sample data from Qdrant:", error);
     throw error;
   }
-} 
+}

@@ -1,15 +1,19 @@
-import { OpenAiInstance } from "ai-service-hub";
+import OpenAI from "openai";
 import { env } from "../config/env";
 import { pool } from "../db/database";
 
-// Initialize OpenAI instance
-export const openaiClient = new OpenAiInstance(env.openai.apiKey);
+// Initialize OpenAI client
+const openai = new OpenAI({ apiKey: env.openai.apiKey });
 
 /**
  * Generate embedding for a service description
  */
 export async function generateEmbedding(serviceDescription: string): Promise<number[]> {
-  return await openaiClient.embedding(serviceDescription);
+  const response = await openai.embeddings.create({
+    model: "text-embedding-3-large",
+    input: serviceDescription,
+  });
+  return response.data[0].embedding;
 }
 
 /**
@@ -33,8 +37,8 @@ export async function getCachedAiSuggestion(serviceDescription: string, pkdCodeD
     // Otherwise, generate a new AI suggestion
     const pkdCodeString = pkdCodeData.map(item => JSON.stringify(item)).join(", ");
     const prompt = `
-    Na podstawie danych podanych przez użytkownika wybierz z listy najbardziej pasujący element ${pkdCodeString}.  
-Wynik zwróć wyłącznie w formacie JSON zgodnym ze schematem:  
+    Na podstawie danych podanych przez użytkownika wybierz z listy najbardziej pasujący element ${pkdCodeString}.
+Wynik zwróć wyłącznie w formacie JSON zgodnym ze schematem:
 {
   "id": string,            // identyfikator elementu z listy
   "version": number,       // wersja rekordu
@@ -44,9 +48,9 @@ Wynik zwróć wyłącznie w formacie JSON zgodnym ze schematem:
     "nazwaGrupowania": string,      // nazwa grupowania
     "opisDodatkowy": string         // szczegółowy opis
   }
-}  
+}
 
-Przykładowa odpowiedź:  
+Przykładowa odpowiedź:
 {
   "id": "5f5d9030-ff0a-4a2c-b2e9-e31ef5e1abed",
   "version": 739,
@@ -59,11 +63,16 @@ Przykładowa odpowiedź:
 }
 `;
 
-    const response = await openaiClient.chat(serviceDescription, prompt, "gpt-4o", {
-      type: "json_object",
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user", content: serviceDescription },
+      ],
+      response_format: { type: "json_object" },
     });
 
-    const aiOutput = response || "";
+    const aiOutput = response.choices[0].message.content || "";
 
     // Insert or update the result in 'aiCache' table
     await pool.query(
@@ -79,4 +88,4 @@ Przykładowa odpowiedź:
     console.error("Error in getCachedAiSuggestion:", error);
     throw error;
   }
-} 
+}
