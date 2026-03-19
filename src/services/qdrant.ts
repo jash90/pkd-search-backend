@@ -3,8 +3,11 @@ import { env } from "../config/env";
 import { pool } from "../db/database";
 
 // Initialize Qdrant client
+// QdrantClient defaults to port 6333; for HTTPS public URLs we must use port 443
+const qdrantUrl = new URL(env.qdrant.url);
 export const qdrantClient = new QdrantClient({
   url: env.qdrant.url,
+  port: qdrantUrl.protocol === "https:" ? 443 : 6333,
   apiKey: env.qdrant.apiKey,
 });
 
