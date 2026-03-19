@@ -1,5 +1,5 @@
 import { getCachedQdrantData } from "./qdrant";
-import { generateEmbedding, getCachedAiSuggestion } from "./openai";
+import { generateEmbedding, getCachedAiSuggestion, getAiCacheOnly } from "./openai";
 
 /**
  * Processes the backend task by embedding a service description,
@@ -10,7 +10,7 @@ export async function processServiceData(serviceDescription: string): Promise<{ 
     const embedding = await generateEmbedding(serviceDescription);
     const pkdCodeData = await getCachedQdrantData(serviceDescription, embedding);
     const aiSuggestion = await getCachedAiSuggestion(serviceDescription, pkdCodeData);
-    
+
     return {
       pkdCodeData,
       aiSuggestion,
@@ -28,7 +28,7 @@ export async function processServiceDataOnlyDatabase(serviceDescription: string)
   try {
     const embedding = await generateEmbedding(serviceDescription);
     const pkdCodeData = await getCachedQdrantData(serviceDescription, embedding);
-    
+
     return { pkdCodeData };
   } catch (error) {
     console.error("Error during backend processing:", error);
@@ -37,17 +37,20 @@ export async function processServiceDataOnlyDatabase(serviceDescription: string)
 }
 
 /**
- * Process only AI suggestion data
+ * Process only AI suggestion data — check cache first, skip embedding+Qdrant if hit
  */
-export async function processServiceDataOnlyAi(serviceDescription: string): Promise<{ aiSuggestion: string }> {
+export async function processServiceDataOnlyAi(serviceDescription: string): Promise<{ aiSuggestion: any }> {
   try {
+    const cached = await getAiCacheOnly(serviceDescription);
+    if (cached) return { aiSuggestion: cached };
+
     const embedding = await generateEmbedding(serviceDescription);
     const pkdCodeData = await getCachedQdrantData(serviceDescription, embedding);
     const aiSuggestion = await getCachedAiSuggestion(serviceDescription, pkdCodeData);
-    
+
     return { aiSuggestion };
   } catch (error) {
     console.error("Error during backend processing:", error);
     throw new Error("Backend processing error");
   }
-} 
+}

@@ -1,44 +1,34 @@
-import express from "express";
-import { 
-  processServiceData, 
-  processServiceDataOnlyDatabase, 
-  processServiceDataOnlyAi 
+import express, { Request, Response, NextFunction } from "express";
+import {
+  processServiceData,
+  processServiceDataOnlyDatabase,
+  processServiceDataOnlyAi
 } from "../services/processor";
 
 const router = express.Router();
 
-// @ts-ignore - Bypassing TypeScript error for Express router handler types
-router.get("/", (req, res, next) => {
+router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { serviceDescription, onlyDatabase, onlyAi } = req.query;
-    
+
     if (!serviceDescription || typeof serviceDescription !== 'string') {
-      return res.status(400).json({ error: "Service description is required" });
+      res.status(400).json({ error: "Service description is required" });
+      return;
     }
 
     if (onlyDatabase) {
-      processServiceDataOnlyDatabase(serviceDescription)
-        .then(({ pkdCodeData }) => {
-          res.status(200).json({ data: { pkdCodeData } });
-        })
-        .catch(next);
+      const { pkdCodeData } = await processServiceDataOnlyDatabase(serviceDescription);
+      res.status(200).json({ data: { pkdCodeData } });
     } else if (onlyAi) {
-      processServiceDataOnlyAi(serviceDescription)
-        .then(({ aiSuggestion }) => {
-          res.status(200).json({ data: { aiSuggestion } });
-        })
-        .catch(next);
+      const { aiSuggestion } = await processServiceDataOnlyAi(serviceDescription);
+      res.status(200).json({ data: { aiSuggestion } });
     } else {
-      processServiceData(serviceDescription)
-        .then(({ aiSuggestion, pkdCodeData }) => {
-          res.status(200).json({ data: { aiSuggestion, pkdCodeData } });
-        })
-        .catch(next);
+      const { aiSuggestion, pkdCodeData } = await processServiceData(serviceDescription);
+      res.status(200).json({ data: { aiSuggestion, pkdCodeData } });
     }
   } catch (error) {
-    console.error("Error processing request:", error);
     next(error);
   }
 });
 
-export default router; 
+export default router;
