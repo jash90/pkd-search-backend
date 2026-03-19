@@ -26,11 +26,12 @@ export async function getCachedQdrantData(serviceDescription: string, embedding:
     }
 
     // Otherwise, go fetch new data
-    const pkdCodeData = await qdrantClient.query("pkdCode", {
+    const result = await qdrantClient.query("pkdCode", {
       query: embedding,
       limit: 5,
       with_payload: true,
     });
+    const pkdCodeData = result.points;
 
     const pkdCodeDataJson = JSON.stringify(pkdCodeData);
 
@@ -61,13 +62,13 @@ export async function getSampleQdrantData(limit: number = 10): Promise<any[]> {
     const defaultVector = Array(3072).fill(0.1);
 
     // Query Qdrant with the correct dimension vector
-    const sampleData = await qdrantClient.query("pkdCode", {
+    const result = await qdrantClient.query("pkdCode", {
       query: defaultVector,
       limit,
       with_payload: true,
     });
 
-    return sampleData;
+    return result.points;
   } catch (error) {
     console.error("Error getting sample data from Qdrant:", error);
     throw error;
