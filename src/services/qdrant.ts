@@ -13,7 +13,7 @@ export const qdrantClient = new QdrantClient({
   apiKey: env.qdrant.apiKey,
 });
 
-const qdrantLru = new LRUCache<string, any[]>({ max: 500, ttl: 1000 * 60 * 60 });
+const qdrantLru = new LRUCache<string, any[]>({ max: 100, ttl: 1000 * 60 * 60 });
 
 /**
  * Fetch Qdrant data from the 'cache' table, otherwise query Qdrant

@@ -7,7 +7,7 @@ import { dedup } from "../utils/dedup";
 // Initialize OpenAI client
 const openai = new OpenAI({ apiKey: env.openai.apiKey });
 
-const aiLru = new LRUCache<string, any>({ max: 500, ttl: 1000 * 60 * 60 });
+const aiLru = new LRUCache<string, any>({ max: 100, ttl: 1000 * 60 * 60 });
 
 /**
  * Generate embedding for a service description

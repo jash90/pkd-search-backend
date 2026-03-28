@@ -4,6 +4,9 @@ import { env } from "../config/env";
 // Initialize Postgres pool
 export const pool = new Pool({
   connectionString: env.database.url,
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 });
 
 // Create tables if they don't exist
