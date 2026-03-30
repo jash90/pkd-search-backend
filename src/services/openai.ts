@@ -15,7 +15,7 @@ const aiLru = new LRUCache<string, any>({ max: 100, ttl: 1000 * 60 * 60 });
 export async function generateEmbedding(serviceDescription: string): Promise<number[]> {
   return dedup(`emb:${serviceDescription}`, async () => {
     const response = await openai.embeddings.create({
-      model: "text-embedding-3-large",
+      model: "text-embedding-3-small",
       input: serviceDescription,
     });
     return response.data[0].embedding;
