@@ -19,7 +19,7 @@ const qdrantLru = new LRUCache<string, any[]>({ max: 100, ttl: 1000 * 60 * 60 })
  * Fetch Qdrant data from the 'cache' table, otherwise query Qdrant
  * and store the results in Postgres.
  */
-export async function getCachedQdrantData(serviceDescription: string, embedding: number[]): Promise<any[]> {
+export async function getCachedQdrantData(serviceDescription: string, embedding: number[], limit: number = 5): Promise<any[]> {
   return dedup(`qdrant:${serviceDescription}`, async () => {
     try {
       const lruHit = qdrantLru.get(serviceDescription);
@@ -41,7 +41,7 @@ export async function getCachedQdrantData(serviceDescription: string, embedding:
       // Otherwise, go fetch new data
       const result = await qdrantClient.query("pkdCode", {
         query: embedding,
-        limit: 5,
+        limit,
         with_payload: true,
       });
       const pkdCodeData = result.points;
